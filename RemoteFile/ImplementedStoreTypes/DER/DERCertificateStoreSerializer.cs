@@ -17,7 +17,8 @@ using Keyfactor.PKI.PrivateKeys;
 using Keyfactor.PKI.X509;
 using Keyfactor.Extensions.Orchestrator.RemoteFile.RemoteHandlers;
 using Keyfactor.Extensions.Orchestrator.RemoteFile.Models;
-
+using Keyfactor.PKI.CryptographicObjects.Formatters;
+using Keyfactor.PKI.Extensions;
 using Microsoft.Extensions.Logging;
 
 using Org.BouncyCastle.Crypto;
@@ -49,12 +50,12 @@ namespace Keyfactor.Extensions.Orchestrator.RemoteFile.DER
 
             if (String.IsNullOrEmpty(SeparatePrivateKeyFilePath))
             {
-                store.SetCertificateEntry(CertificateConverterFactory.FromBouncyCastleCertificate(certificate.Certificate).ToX509Certificate2().Thumbprint, certificate);
+                store.SetCertificateEntry(certificate.Certificate.Thumbprint(), certificate);
             }
             else
             {
                 AsymmetricKeyEntry keyEntry = GetPrivateKey(storePassword ?? string.Empty, remoteHandler);
-                store.SetKeyEntry(CertificateConverterFactory.FromBouncyCastleCertificate(certificate.Certificate).ToX509Certificate2().Thumbprint, keyEntry, new X509CertificateEntry[] { certificate });
+                store.SetKeyEntry(certificate.Certificate.Thumbprint(), keyEntry, new X509CertificateEntry[] { certificate });
             }
 
             // Second Pkcs12Store necessary because of an obscure BC bug where creating a Pkcs12Store without .Load (code above using "Set" methods only) does not set all internal hashtables necessary to avoid an error later
@@ -83,19 +84,25 @@ namespace Keyfactor.Extensions.Orchestrator.RemoteFile.DER
 
             if (certificateStore.Aliases.Count() != 0)
             {
-
+                
                 if (certificateStore.Aliases.Count() > 1)
                     throw new RemoteFileException($"Cannot add a new certificate to a DER certificate store that already contains a certificate.");
-
+                
+                // DD: at this point, we know the PKCS12Store only has one entry. The loop below seems unnecessary.
+                
                 foreach (string currentAlias in certificateStore.Aliases)
                 {
                     alias = currentAlias;
                     if (!certificateStore.IsKeyEntry(alias) && !string.IsNullOrEmpty(SeparatePrivateKeyFilePath))
                         throw new RemoteFileException($"DER certificate store has a private key at {SeparatePrivateKeyFilePath}, but no private key was passed with the certificate to this job.");
                 }
-
-                CertificateConverter certConverter = CertificateConverterFactory.FromBouncyCastleCertificate(certificateStore.GetCertificate(alias).Certificate);
-                certificateBytes = certConverter.ToDER(string.IsNullOrEmpty(storePassword) ? string.Empty : storePassword);
+                
+                // DD: at this point, if the SeparatePrivateKeyFilePath is set, the store only contains a private key and no certificate.
+                // this means that certificateStore.GetCertificate(alias).Certificate returns null below if SeparatePrivateKeyFilePath is set.
+                // it doesn't seem possible to have a case with a private key and a certificate here.
+                // Is this method called once to handle a cert and once again to handle the key?
+                
+                certificateBytes = CryptographicObjectFormatter.DER.Format(certificateStore.GetCertificate(alias).Certificate);
 
                 if (!string.IsNullOrEmpty(SeparatePrivateKeyFilePath))
                 {
@@ -140,9 +147,7 @@ namespace Keyfactor.Extensions.Orchestrator.RemoteFile.DER
 
             try
             {
-                CertificateConverter converter = CertificateConverterFactory.FromDER(storeContentBytes);
-                X509Certificate bcCert = converter.ToBouncyCastleCertificate();
-                certificateEntry = new X509CertificateEntry(bcCert);
+                certificateEntry = new X509CertificateEntry(new X509Certificate(storeContentBytes));
             }
             catch (Exception ex)
             {

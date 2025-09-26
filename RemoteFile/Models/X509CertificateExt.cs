@@ -5,16 +5,16 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions
 // and limitations under the License.
 
-﻿using System.Security.Cryptography.X509Certificates;
+using Org.BouncyCastle.X509;
 
 namespace Keyfactor.Extensions.Orchestrator.RemoteFile.Models
 {
-    class X509Certificate2Ext : X509Certificate2
+    class X509CertificateExt : X509Certificate
     {
         public string FriendlyNameExt { get; set; }
 
-        public new bool HasPrivateKey { get; set; }
+        public bool HasPrivateKey { get; set; }
 
-        public X509Certificate2Ext(byte[] bytes): base(bytes) { }
+        public X509CertificateExt(byte[] bytes): base(bytes) { }
     }
 }
